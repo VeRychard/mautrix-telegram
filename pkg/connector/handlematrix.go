@@ -490,6 +490,12 @@ func (tc *TelegramClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 			return nil, err
 		}
 		replyTo = &tg.InputReplyToMessage{ReplyToMsgID: messageID}
+		switch msg.Content.MsgType {
+		case event.MsgText, event.MsgNotice, event.MsgEmote:
+			if quote := matrixfmt.ParsePartialReplyQuote(ctx, tc.matrixParser, msg.Content, msg.Portal); quote != "" {
+				replyTo.(*tg.InputReplyToMessage).SetQuoteText(quote)
+			}
+		}
 	}
 	if topicID > 0 {
 		if replyTo == nil {
@@ -526,14 +532,21 @@ func (tc *TelegramClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 	} else {
 		switch msg.Content.MsgType {
 		case event.MsgText, event.MsgNotice, event.MsgEmote:
-			updates, err = tc.client.API().MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{
+			req := &tg.MessagesSendMessageRequest{
 				Peer:      peer,
 				NoWebpage: noWebpage,
 				Message:   message,
 				Entities:  entities,
 				ReplyTo:   replyTo,
 				RandomID:  randomID,
-			})
+			}
+			updates, err = tc.client.API().MessagesSendMessage(ctx, req)
+			if replyToMsg, ok := replyTo.(*tg.InputReplyToMessage); ok && replyToMsg.QuoteText != "" && tg.IsQuoteTextInvalid(err) {
+				log.Warn().Err(err).Msg("Quote text rejected, retrying as a normal reply")
+				replyToMsg.QuoteText = ""
+				replyToMsg.Flags.Unset(2)
+				updates, err = tc.client.API().MessagesSendMessage(ctx, req)
+			}
 		case event.MsgImage, event.MsgFile, event.MsgAudio, event.MsgVideo:
 			var media tg.InputMediaClass
 			forceDocument, _ := msg.Event.Content.Raw["fi.mau.telegram.force_document"].(bool)

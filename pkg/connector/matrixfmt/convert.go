@@ -90,6 +90,14 @@ func toTelegramEntity(br telegramfmt.BodyRange) tg.MessageEntityClass {
 
 const cutoffText = " [long message cut off]"
 
+// ParsePartialReplyQuote returns the quote of a partial reply, or an empty string if the message isn't one.
+func ParsePartialReplyQuote(ctx context.Context, parser *HTMLParser, content *event.MessageEventContent, portal *bridgev2.Portal) string {
+	if content.Format != event.FormatHTML {
+		return ""
+	}
+	return parser.PartialReplyQuote(content.FormattedBody, NewContext(ctx, portal))
+}
+
 func Parse(ctx context.Context, parser *HTMLParser, content *event.MessageEventContent, portal *bridgev2.Portal, maxLength int) (string, []tg.MessageEntityClass) {
 	if content.MsgType.IsMedia() && (content.FileName == "" || content.FileName == content.Body) {
 		// The body is the filename.

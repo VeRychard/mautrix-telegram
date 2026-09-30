@@ -26,6 +26,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
@@ -605,6 +606,33 @@ func (parser *HTMLParser) nodeToStrings(node *html.Node, ctx Context) (strs []*E
 
 func (parser *HTMLParser) nodeToString(node *html.Node, ctx Context) *EntityString {
 	return JoinEntityString("", parser.nodeToStrings(node, ctx)...)
+}
+
+// PartialReplyQuote returns the text of the data-telegram-partial-reply blockquote at the start of the HTML.
+func (parser *HTMLParser) PartialReplyQuote(htmlData string, ctx Context) string {
+	nodes, err := html.ParseFragment(strings.NewReader(htmlData), &html.Node{
+		Type:     html.ElementNode,
+		Data:     "body",
+		DataAtom: atom.Body,
+	})
+	if err != nil {
+		return ""
+	}
+	for _, node := range nodes {
+		if node.Type == html.TextNode && strings.TrimSpace(node.Data) == "" {
+			continue
+		} else if node.Type != html.ElementNode || node.Data != "blockquote" || node.FirstChild == nil {
+			return ""
+		} else if _, isPartialReply := parser.maybeGetAttribute(node, "data-telegram-partial-reply"); !isPartialReply {
+			return ""
+		}
+		quote := parser.nodeToTagAwareString(node.FirstChild, ctx.WithTag("blockquote"))
+		if quote == nil {
+			return ""
+		}
+		return quote.String.String()
+	}
+	return ""
 }
 
 // Parse converts Matrix HTML into text using the settings in this parser.
